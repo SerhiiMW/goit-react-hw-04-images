@@ -1,4 +1,4 @@
-import { Component } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import styles from './searchbar.module.css';
 
 import Button from '../Button/Button';
@@ -8,145 +8,117 @@ import { RotatingLines } from 'react-loader-spinner';
 
 import { searchImg } from '../../api/image';
 
-
-class ImgSearchForm extends Component {
-  state = {
+const ImgSearchForm = ({ onSubmit }) => {
+  const [state, setState] = useState({
     search: '',
-  };
-
-  handleChange = ({ target }) => {
+  });
+  const inputRef = useRef(null);
+  useEffect(() => {
+    inputRef.current.focus();
+  }, []);
+  const handleChange = ({ target }) => {
     const { name, value } = target;
-    this.setState({
+    setState({
+      ...state,
       [name]: value,
     });
   };
-
-  handleSubmit = e => {
+  const handleSubmit = e => {
     e.preventDefault();
-    this.props.onSubmit({ ...this.state });
-    this.setState({
+    onSubmit({ ...state });
+    reset();
+  };
+  const reset = () => {
+    setState({
       search: '',
     });
   };
+  return (
+    <header className={styles.Searchbar}>
+      <form onSubmit={handleSubmit} className={styles.SearchForm}>
+        <button type="submit" className={styles.SearchFormButton}>
+          <span className={styles.SearchFormButtonLabel}>&#128269;</span>
+        </button>
+        <input
+          ref={inputRef}
+          value={state.search}
+          onChange={handleChange}
+          required
+          className={styles.SearchFormInput}
+          type="text"
+          name="search"
+          placeholder="Search images and photos"
+        />
+      </form>
+    </header>
+  );
+};
 
-  render() {
-    const { handleChange, handleSubmit } = this;
-    const { search } = this.state;
+const ImgSearch = () => {
+  const [search, setSearch] = useState('');
+  const [images, setImages] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [page, setPage] = useState(1);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [largeImg, setLargeImg] = useState('');
+  const [totalHits, setTotalHits] = useState(0)
+  useEffect(() => {
+    const fetchImages = async () => {
+      try {
+        setLoading(true);
+        const { data } = await searchImg(search, page);
+        setImages(prevImages =>
+          data.hits?.length ? [...prevImages, ...data.hits] : prevImages
+        );
+        setTotalHits(totalHits => (data.totalHits));
+      } catch (error) {
+        setError(error.message);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    return (
-      <header className={styles.Searchbar}>
-        <form onSubmit={handleSubmit} className={styles.SearchForm}>
-          <button type="submit" className={styles.SearchFormButton}>
-            <span className={styles.SearchFormButtonLabel}>&#128269;</span>
-          </button>
-          <input
-            value={search}
-            onChange={handleChange}
-            required
-            className={styles.SearchFormInput}
-            type="text"
-            name="search"
-            placeholder="Search images and photos"
-          />
-        </form>
-      </header>
-    );
-  }
-}
-
-class ImgSearch extends Component {
-  state = {
-    search: '',
-    images: [],
-    loading: false,
-    error: null,
-    page: 1,
-    modalOpen: false,
-    largeImg: '',
-  };
-
-  async componentDidUpdate(_, prevState) {
-    const { search, page } = this.state;
-    if (search && (search !== prevState.search || page !== prevState.page)) {
-      this.fetchImg();
+    if (search) {
+      fetchImages();
     }
-  }
-
-  async fetchImg() {
-    const { search, page } = this.state;
-    try {
-      this.setState({
-        loading: true,
-      });
-      const { data } = await searchImg(search, page);
-      this.setState(({ images }) => ({
-        images: data.hits?.length ? [...images, ...data.hits] : images,
-        loadMoreBtn: this.state.page < Math.ceil(data.totalHits / 12 )
-      }));
-    } catch (error) {
-      this.setState({
-        error: error.message,
-      });
-    } finally {
-      this.setState({
-        loading: false,
-      });
-    }
-  }
-
-  handleSearch = ({ search }) => {
-    this.setState({
-      search,
-      images: [],
-      page: 1,
-    });
+  }, [search, page]);
+  const handleSearch = ({ search }) => {
+    setSearch(search);
+    setImages([]);
+    setPage(1);
   };
-
-  loadMore = () => {
-    this.setState(({ page }) => ({ page: page + 1 }));
+  const loadMore = () => setPage(prevPage => prevPage + 1);
+  const showModal = ({ largeImageURL }) => {
+    setModalOpen(true);
+    setLargeImg(largeImageURL);
   };
-
-  showModal = ({ largeImageURL }) => {
-    this.setState({
-      modalOpen: true,
-      largeImg: largeImageURL,
-    });
+  const closeModal = () => {
+    setModalOpen(false);
+    setLargeImg('');
   };
-
-  closeModal = () => {
-    this.setState({
-      modalOpen: false,
-      largeImg: '',
-    });
-  };
-
-  render() {
-    const { handleSearch, loadMore, showModal, closeModal } = this;
-    const { images, loading, error, modalOpen, largeImg, loadMoreBtn } = this.state;
-
-    const isImages = Boolean(images.length);
-
-    return (
-      <>
-        <ImgSearchForm onSubmit={handleSearch} />
-        {error && <p className={styles.error}>{error}</p>}
-        {loading && <RotatingLines />}
-        {isImages && <ImageGallery showModal={showModal} items={images} />}
-        {isImages && loadMoreBtn && (
-          <div className={styles.loadMoreWrapper}>
-            <Button onClick={loadMore} type="button">
-              Load more
-            </Button>
-          </div>
-        )}
-        {modalOpen && (
-          <Modal close={closeModal}>
-              <img className={styles.modalImg} src={largeImg} alt="" />
-          </Modal>
-        )}
-      </>
-    );
-  }
-}
+  const isImages = Boolean(images.length);
+  const loadMoreBtn = page < Math.ceil(totalHits / 12);
+  return (
+    <>
+      <ImgSearchForm onSubmit={handleSearch} />
+      {error && <p className={styles.error}>{error}</p>}
+      {loading && <RotatingLines />}
+      {isImages && <ImageGallery showModal={showModal} items={images} />}
+      {isImages && loadMoreBtn && (
+        <div className={styles.loadMoreWrapper}>
+          <Button onClick={loadMore} type="button">
+            Load more
+          </Button>
+        </div>
+      )}
+      {modalOpen && (
+        <Modal close={closeModal}>
+          <img className={styles.modalImg} src={largeImg} alt="" />
+        </Modal>
+      )}
+    </>
+  );
+};
 
 export default ImgSearch;
